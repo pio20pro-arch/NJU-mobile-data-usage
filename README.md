@@ -4,7 +4,7 @@
 
 ##Yet another vibecoding application ;)
 
-This app is intended for nju mobile users who have a subscription service.
+This app is intended for nju mobile users who have a subscription service (https://www.njumobile.pl/oferta/nju-z-subskrypcja).
 
 Windows tray application in C# (.NET 8 / WinForms) for monitoring remaining data packages for nju numbers.
 
@@ -72,7 +72,7 @@ On startup, logs older than today are removed.
 
 ## Opis po polsku
 
-To jest aplikacja typu tray dla systemu Windows napisana w C# (.NET 8 / WinForms), przeznaczona dla uzytkownikow nju mobile z usluga subskrypcji.
+To jest aplikacja typu tray dla systemu Windows napisana w C# (.NET 8 / WinForms), przeznaczona dla uzytkownikow nju mobile z usluga subskrypcji (https://www.njumobile.pl/oferta/nju-z-subskrypcja).
 
 ### Funkcje
 
