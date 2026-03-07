@@ -1,0 +1,17 @@
+# Build outputs
+bin/
+obj/
+_build_temp/
+
+# Visual Studio / user-local
+.vs/
+*.user
+*.suo
+
+# Logs and temp
+*.log
+*.tmp
+
+# OS files
+Thumbs.db
+Desktop.ini
