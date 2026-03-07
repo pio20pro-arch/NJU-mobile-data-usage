@@ -1,7 +1,8 @@
-[README.md](https://github.com/user-attachments/files/25816628/README.md)
-# NjuTrayApp
+<img width="417" height="247" alt="Screenshot 2026-03-07 184339" src="https://github.com/user-attachments/assets/1ba2ebe7-bfc0-4859-b2f7-d263a120c5de" /><img width="544" height="424" alt="Screenshot 2026-03-07 184416" src="https://github.com/user-attachments/assets/4eb80098-206a-4cb0-9704-1d634d4cc23b" />
 
-Yet another vibecoding application.
+
+
+##Yet another vibecoding application ;)
 
 This app is intended for nju mobile users who have a subscription service.
 
@@ -68,3 +69,69 @@ Contains:
 If `Ukrywaj sekrety w logach` is enabled, sensitive values (login, password, tokens, auth/api keys) are masked as `***`.
 
 On startup, logs older than today are removed.
+
+## Opis po polsku
+
+To jest aplikacja typu tray dla systemu Windows napisana w C# (.NET 8 / WinForms), przeznaczona dla uzytkownikow nju mobile z usluga subskrypcji.
+
+### Funkcje
+
+- Logowanie przez terminal (`username` + `password`) do API IAM.
+- Automatyczne odswiezanie tokenow (`access_token` / `refresh_token`).
+- Pobieranie grup i produktow dla wszystkich memberow.
+- Wyliczanie pozostalych danych z `OPL Data Asset (monthly)` (`balances.currentValue`).
+- Odswiezanie w tle co 1 minute (konfigurowalne).
+- Glowna ikona tray z suma danych.
+- Menu po prawym kliku:
+  - lista numerow (`MB | GB`),
+  - `Zaloguj`,
+  - `Ikonki numerow w tray`,
+  - `Ukrywaj sekrety w logach`,
+  - `Autostart z Windows`,
+  - `Zmien API key`,
+  - `Wyjdz`.
+- Opcjonalne dodatkowe ikonki tray dla kazdego numeru (GB na ikonie).
+- Bezpieczna persystencja loginu i tokenow przez Windows DPAPI (`CurrentUser`) oraz autologowanie po restarcie.
+- Szczegolowe logi HTTP request/response.
+
+### Wymagania
+
+- Windows 10/11
+- .NET SDK 8.0+
+
+### Uruchomienie
+
+```powershell
+dotnet build "VSCODE Workspace.sln"
+dotnet run --project ".\NjuTrayApp\NjuTrayApp.csproj"
+```
+
+### Konfiguracja
+
+Plik konfiguracyjny:
+
+`%AppData%\NjuTrayApp\config.json`
+
+Wazne pola:
+
+- `apiKey`
+- `refreshIntervalSeconds`
+- `perNumberTrayIconsEnabled`
+- `hideSecretsInLogs`
+
+Przy pierwszym uruchomieniu aplikacja zapisuje domyslny `apiKey`.
+
+### Logi
+
+Lokalizacja:
+
+`%AppData%\NjuTrayApp\logs\`
+
+Log zawiera:
+
+- `HTTP-REQUEST` (metoda, URL, naglowki, body)
+- `HTTP-RESPONSE` (status, naglowki, body)
+
+Po wlaczeniu opcji `Ukrywaj sekrety w logach` wrazliwe dane (login, haslo, tokeny, auth/api key) sa maskowane jako `***`.
+
+Przy starcie aplikacja usuwa logi starsze niz dzisiejszy.
