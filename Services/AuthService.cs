@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 using System.Text.Json;
 using NjuTrayApp.Models;
 
@@ -10,6 +11,8 @@ public sealed class AuthService
     private const string ClientId = "nju-web-app-v1";
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     private static readonly TimeSpan RefreshSkew = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan NetworkRetryDelay = TimeSpan.FromSeconds(5);
+    private const int NetworkRetryCount = 60;
 
     private readonly FileLogger _logger;
     private readonly SecureAuthStore _secureAuthStore;
@@ -36,7 +39,6 @@ public sealed class AuthService
         await _authLock.WaitAsync(cancellationToken);
         try
         {
-            _logger.Info($"Preparing password grant request. Username length={credentials.Username.Length}, Password length={credentials.Password.Length}.");
             var values = new Dictionary<string, string>
             {
                 ["grant_type"] = "password",
@@ -191,10 +193,7 @@ public sealed class AuthService
             TokenUri.ToString(),
             [new("Content-Type", "application/x-www-form-urlencoded")],
             requestBodyForLog);
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, TokenUri) { Content = content };
-
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await SendTokenRequestWithRetryAsync(values, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         var headers = response.Headers.SelectMany(h => h.Value.Select(v => new KeyValuePair<string, string>(h.Key, v)));
         _logger.LogHttpResponse(TokenUri.ToString(), (int)response.StatusCode, headers, body);
@@ -222,6 +221,38 @@ public sealed class AuthService
             AccessExpiresAt = accessExp,
             RefreshExpiresAt = refreshExp
         };
+    }
+
+    private async Task<HttpResponseMessage> SendTokenRequestWithRetryAsync(
+        IReadOnlyDictionary<string, string> values,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                using var content = new FormUrlEncodedContent(values);
+                using var request = new HttpRequestMessage(HttpMethod.Post, TokenUri) { Content = content };
+                return await _httpClient.SendAsync(request, cancellationToken);
+            }
+            catch (Exception ex) when (IsNetworkStartupError(ex) && attempt < NetworkRetryCount)
+            {
+                _logger.Error($"Token request network unavailable ({ex.Message}). Retry {attempt}/{NetworkRetryCount} in {NetworkRetryDelay.TotalSeconds:0}s.");
+                await Task.Delay(NetworkRetryDelay, cancellationToken);
+            }
+        }
+    }
+
+    private static bool IsNetworkStartupError(Exception ex)
+    {
+        if (ex is HttpRequestException httpEx && httpEx.InnerException is SocketException socketEx)
+        {
+            return socketEx.SocketErrorCode is SocketError.HostNotFound
+                or SocketError.TryAgain
+                or SocketError.NoData;
+        }
+
+        return ex.Message.Contains("No such host is known", StringComparison.OrdinalIgnoreCase);
     }
 
     private void RestorePersistedAuthData()

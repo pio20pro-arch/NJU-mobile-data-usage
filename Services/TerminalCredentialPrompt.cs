@@ -60,7 +60,6 @@ public static class TerminalCredentialPrompt
                 logger.Error("Credentials JSON parsed but username/password are empty.");
                 return null;
             }
-            logger.Info($"Credentials parsed from terminal. Username length={dto.Username.Length}, Password length={dto.Password.Length}.");
 
             return new LoginCredentials
             {

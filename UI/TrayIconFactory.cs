@@ -11,25 +11,40 @@ public static class TrayIconFactory
 
     public static Icon CreateNumberIcon(string text)
     {
-        using var bitmap = new Bitmap(64, 64);
+        var size = Math.Max(SystemInformation.SmallIconSize.Width, 16);
+        using var bitmap = new Bitmap(size, size);
         using var graphics = Graphics.FromImage(bitmap);
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
         graphics.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
 
         graphics.Clear(Color.Transparent);
-        using var background = new SolidBrush(Color.FromArgb(32, 104, 184));
-        graphics.FillEllipse(background, 0, 0, 63, 63);
 
-        var fontSize = text.Length >= 4 ? 16f : 20f;
-        using var font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
-        using var brush = new SolidBrush(Color.White);
-        var rect = new RectangleF(0, 0, 64, 64);
-        using var stringFormat = new StringFormat
+        var fontSize = text.Length switch
         {
-            Alignment = StringAlignment.Center,
-            LineAlignment = StringAlignment.Center
+            <= 2 => size * 0.80f,
+            3 => size * 0.64f,
+            _ => size * 0.55f
         };
-        graphics.DrawString(text, font, brush, rect, stringFormat);
+        using var font = new Font("Segoe UI", fontSize, FontStyle.Bold, GraphicsUnit.Pixel);
+        var flags = TextFormatFlags.NoPadding | TextFormatFlags.SingleLine;
+        var measured = TextRenderer.MeasureText(graphics, text, font, Size.Empty, flags);
+        var x = (size - measured.Width) / 2;
+        var y = (size - measured.Height) / 2;
+
+        // Two-digit values tend to look slightly down-shifted in tray icons.
+        if (text.Length == 2)
+        {
+            y -= 1;
+        }
+
+        var rect = new Rectangle(x, y, measured.Width, measured.Height);
+        TextRenderer.DrawText(
+            graphics,
+            text,
+            font,
+            rect,
+            Color.White,
+            flags);
 
         var handle = bitmap.GetHicon();
         try
