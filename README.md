@@ -6,6 +6,8 @@
 
 This app is intended for nju mobile users who have a subscription service (https://www.njumobile.pl/oferta/nju-z-subskrypcja).
 
+Support for other accounts like prepaid or mobile internet: https://github.com/pio20pro-arch/Nju-mobile-prepaid-status
+
 Windows tray application in C# (.NET 8 / WinForms) for monitoring remaining data packages for nju numbers.
 
 ## Features
@@ -73,6 +75,8 @@ On startup, logs older than today are removed.
 ## Opis po polsku
 
 To jest aplikacja typu tray dla systemu Windows napisana w C# (.NET 8 / WinForms), przeznaczona dla uzytkownikow nju mobile z usluga subskrypcji (https://www.njumobile.pl/oferta/nju-z-subskrypcja).
+
+Wsparcie dla innych kont typu sybskrypcja lub mobilny internet: https://github.com/pio20pro-arch/Nju-mobile-prepaid-status
 
 ### Funkcje
 
