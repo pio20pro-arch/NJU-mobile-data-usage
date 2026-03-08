@@ -38,7 +38,8 @@ Windows tray application in C# (.NET 8 / WinForms) for monitoring remaining data
 ## Run
 
 ```powershell
-dotnet build "VSCODE Workspace.sln"
+cd .\NjuTrayApp\
+dotnet build
 dotnet run --project ".\NjuTrayApp\NjuTrayApp.csproj"
 ```
 
@@ -106,7 +107,8 @@ Wsparcie dla innych kont typu sybskrypcja lub mobilny internet: https://github.c
 ### Uruchomienie
 
 ```powershell
-dotnet build "VSCODE Workspace.sln"
+cd .\NjuTrayApp\
+dotnet build
 dotnet run --project ".\NjuTrayApp\NjuTrayApp.csproj"
 ```
 
