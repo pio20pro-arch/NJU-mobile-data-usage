@@ -25,4 +25,5 @@ public sealed class MemberUsage
     public required string UserId { get; init; }
     public required string PhoneNumber { get; init; }
     public required decimal RemainingMb { get; init; }
+    public required decimal RoamingMb { get; init; }
 }

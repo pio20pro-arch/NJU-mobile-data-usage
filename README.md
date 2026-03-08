@@ -1,10 +1,8 @@
-<img width="417" height="247" alt="Screenshot 2026-03-07 184339" src="https://github.com/user-attachments/assets/1ba2ebe7-bfc0-4859-b2f7-d263a120c5de" /><img width="544" height="424" alt="Screenshot 2026-03-07 184416" src="https://github.com/user-attachments/assets/4eb80098-206a-4cb0-9704-1d634d4cc23b" />
+# NjuTrayApp
 
+Yet another vibecoding application.
 
-
-##Yet another vibecoding application ;)
-
-This app is intended for nju mobile users who have a subscription service (https://www.njumobile.pl/oferta/nju-z-subskrypcja).
+This app is intended for nju mobile users who have a subscription service.
 
 Windows tray application in C# (.NET 8 / WinForms) for monitoring remaining data packages for nju numbers.
 
@@ -72,7 +70,7 @@ On startup, logs older than today are removed.
 
 ## Opis po polsku
 
-To jest aplikacja typu tray dla systemu Windows napisana w C# (.NET 8 / WinForms), przeznaczona dla uzytkownikow nju mobile z usluga subskrypcji (https://www.njumobile.pl/oferta/nju-z-subskrypcja).
+To jest aplikacja typu tray dla systemu Windows napisana w C# (.NET 8 / WinForms), przeznaczona dla uzytkownikow nju mobile z usluga subskrypcji.
 
 ### Funkcje
 

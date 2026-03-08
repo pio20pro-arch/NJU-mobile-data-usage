@@ -8,7 +8,6 @@ public sealed class TrayApplicationContext : ApplicationContext
     private readonly NotifyIcon _notifyIcon;
     private readonly ContextMenuStrip _contextMenu;
     private readonly ToolStripMenuItem _loginMenuItem;
-    private readonly ToolStripMenuItem _perNumberIconsMenuItem;
     private readonly ToolStripMenuItem _hideSecretsInLogsMenuItem;
     private readonly ToolStripMenuItem _autostartMenuItem;
     private readonly ToolStripMenuItem _changeApiKeyMenuItem;
@@ -30,6 +29,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     private Icon? _currentCustomIcon;
     private Task? _backgroundLoopTask;
     private readonly Dictionary<string, NumberTrayIconState> _numberTrayIcons = [];
+    private readonly Dictionary<string, bool> _perNumberTrayIconEnabled = new(StringComparer.Ordinal);
 
     public TrayApplicationContext(
         ConfigService configService,
@@ -46,14 +46,14 @@ public sealed class TrayApplicationContext : ApplicationContext
         _logger = logger;
         _config = _configService.Load();
         _logger.SetHideSecretsInLogs(_config.HideSecretsInLogs);
+        _perNumberTrayIconEnabled.Clear();
+        foreach (var pair in _config.PerNumberTrayIconEnabled ?? new Dictionary<string, bool>())
+        {
+            _perNumberTrayIconEnabled[pair.Key] = pair.Value;
+        }
 
         _contextMenu = new ContextMenuStrip();
         _loginMenuItem = new ToolStripMenuItem("Zaloguj", null, async (_, _) => await LoginAsync());
-        _perNumberIconsMenuItem = new ToolStripMenuItem("Ikonki numerow w tray", null, (_, _) => TogglePerNumberIcons())
-        {
-            Checked = _config.PerNumberTrayIconsEnabled,
-            CheckOnClick = false
-        };
         _hideSecretsInLogsMenuItem = new ToolStripMenuItem("Ukrywaj sekrety w logach", null, (_, _) => ToggleHideSecretsInLogs())
         {
             Checked = _config.HideSecretsInLogs,
@@ -67,7 +67,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         _changeApiKeyMenuItem = new ToolStripMenuItem("Zmien API key", null, (_, _) => ChangeApiKey());
         _exitMenuItem = new ToolStripMenuItem("Wyjdz", null, (_, _) => ExitApplication());
         _numbersSeparator = new ToolStripSeparator();
-        _contextMenu.Items.AddRange([_numbersSeparator, _loginMenuItem, _perNumberIconsMenuItem, _hideSecretsInLogsMenuItem, _autostartMenuItem, _changeApiKeyMenuItem, _exitMenuItem]);
+        _contextMenu.Items.AddRange([_numbersSeparator, _loginMenuItem, _hideSecretsInLogsMenuItem, _autostartMenuItem, _changeApiKeyMenuItem, _exitMenuItem]);
 
         _notifyIcon = new NotifyIcon
         {
@@ -226,26 +226,6 @@ public sealed class TrayApplicationContext : ApplicationContext
         ShowInfo("Logi", _config.HideSecretsInLogs ? "Ukrywanie sekretow wlaczone." : "Ukrywanie sekretow wylaczone.");
     }
 
-    private void TogglePerNumberIcons()
-    {
-        _config.PerNumberTrayIconsEnabled = !_config.PerNumberTrayIconsEnabled;
-        _perNumberIconsMenuItem.Checked = _config.PerNumberTrayIconsEnabled;
-        _configService.Save(_config);
-
-        if (_config.PerNumberTrayIconsEnabled)
-        {
-            UpdatePerNumberTrayIcons(_currentUsage);
-            _logger.Info("Per-number tray icons enabled.");
-            ShowInfo("Tray", "Ikonki numerow wlaczone.");
-        }
-        else
-        {
-            ClearAllPerNumberTrayIcons();
-            _logger.Info("Per-number tray icons disabled.");
-            ShowInfo("Tray", "Ikonki numerow wylaczone.");
-        }
-    }
-
     private void ExitApplication()
     {
         _logger.Info("Application exit requested.");
@@ -345,12 +325,13 @@ public sealed class TrayApplicationContext : ApplicationContext
         var tasks = members.Select(async member =>
         {
             var productsJson = await _apiClient.GetProductsJsonAsync(accessToken, _config.ApiKey, member.Id, cancellationToken);
-            var mb = ProductParser.ParseMonthlyMbFromProducts(productsJson);
+            var usage = ProductParser.ParseUsageFromProducts(productsJson);
             return new MemberUsage
             {
                 UserId = member.Id,
                 PhoneNumber = NormalizePhoneNumber(member.PrimaryMsisdn),
-                RemainingMb = mb
+                RemainingMb = usage.DomesticMb,
+                RoamingMb = usage.RoamingMb
             };
         });
 
@@ -375,7 +356,7 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     private void UpdateTrayUi(List<MemberUsage> usage)
     {
-        var totalMb = usage.Sum(x => x.RemainingMb);
+        var totalMb = CalculateSelectedTotalMb(usage);
         var totalGb = totalMb / 1024m;
         var iconText = totalGb >= 1000m
             ? "999+"
@@ -411,7 +392,6 @@ public sealed class TrayApplicationContext : ApplicationContext
         _uiContext.Post(_ =>
         {
             _loginMenuItem.Enabled = enabled;
-            _perNumberIconsMenuItem.Enabled = true;
             _hideSecretsInLogsMenuItem.Enabled = true;
             _autostartMenuItem.Enabled = true;
             _changeApiKeyMenuItem.Enabled = enabled;
@@ -485,7 +465,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         }
 
         var ordered = usage.OrderBy(x => x.PhoneNumber).ToList();
-        var totalMb = ordered.Sum(x => x.RemainingMb);
+        var totalMb = CalculateSelectedTotalMb(ordered);
         var totalGb = totalMb / 1024m;
         var totalItem = new ToolStripMenuItem($"Total: {totalMb:0.##} MB | {totalGb:0.##} GB")
         {
@@ -496,12 +476,25 @@ public sealed class TrayApplicationContext : ApplicationContext
         for (var i = ordered.Count - 1; i >= 0; i--)
         {
             var usageItem = ordered[i];
-            var gb = usageItem.RemainingMb / 1024m;
-            var item = new ToolStripMenuItem($"{usageItem.PhoneNumber}: {usageItem.RemainingMb:0.##} MB | {gb:0.##} GB")
+            var domesticGb = usageItem.RemainingMb / 1024m;
+            var domesticKey = BuildUsageKey(usageItem.PhoneNumber, UsageKind.Domestic);
+            var domesticItem = new ToolStripMenuItem($"{usageItem.PhoneNumber} (kraj): {usageItem.RemainingMb:0.##} MB | {domesticGb:0.##} GB")
             {
-                Enabled = false
+                Checked = IsPerNumberIconEnabled(domesticKey),
+                CheckOnClick = true
             };
-            _contextMenu.Items.Insert(1, item);
+            domesticItem.Click += (_, _) => TogglePerNumberIcon(domesticKey, domesticItem.Checked);
+            _contextMenu.Items.Insert(1, domesticItem);
+
+            var roamingGb = usageItem.RoamingMb / 1024m;
+            var roamingKey = BuildUsageKey(usageItem.PhoneNumber, UsageKind.Roaming);
+            var roamingItem = new ToolStripMenuItem($"{usageItem.PhoneNumber} (roaming): {usageItem.RoamingMb:0.##} MB | {roamingGb:0.##} GB")
+            {
+                Checked = IsPerNumberIconEnabled(roamingKey),
+                CheckOnClick = true
+            };
+            roamingItem.Click += (_, _) => TogglePerNumberIcon(roamingKey, roamingItem.Checked);
+            _contextMenu.Items.Insert(2, roamingItem);
         }
 
         _numbersSeparator.Visible = true;
@@ -509,13 +502,25 @@ public sealed class TrayApplicationContext : ApplicationContext
 
     private void UpdatePerNumberTrayIcons(IReadOnlyCollection<MemberUsage> usage)
     {
-        if (!_config.PerNumberTrayIconsEnabled)
-        {
-            ClearAllPerNumberTrayIcons();
-            return;
-        }
+        var requiredKeys = usage
+            .SelectMany(u =>
+            {
+                var keys = new List<string>(2);
+                var domesticKey = BuildUsageKey(u.PhoneNumber, UsageKind.Domestic);
+                var roamingKey = BuildUsageKey(u.PhoneNumber, UsageKind.Roaming);
+                if (IsPerNumberIconEnabled(domesticKey))
+                {
+                    keys.Add(domesticKey);
+                }
 
-        var requiredKeys = usage.Select(u => u.PhoneNumber).ToHashSet(StringComparer.Ordinal);
+                if (IsPerNumberIconEnabled(roamingKey))
+                {
+                    keys.Add(roamingKey);
+                }
+
+                return keys;
+            })
+            .ToHashSet(StringComparer.Ordinal);
         foreach (var key in _numberTrayIcons.Keys.ToList())
         {
             if (!requiredKeys.Contains(key))
@@ -526,22 +531,15 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         foreach (var item in usage.OrderBy(u => u.PhoneNumber))
         {
-            if (!_numberTrayIcons.TryGetValue(item.PhoneNumber, out var iconState))
-            {
-                var notify = new NotifyIcon
-                {
-                    Visible = true
-                };
-                iconState = new NumberTrayIconState(notify);
-                _numberTrayIcons[item.PhoneNumber] = iconState;
-            }
+            UpdateSingleUsageTrayIcon(
+                BuildUsageKey(item.PhoneNumber, UsageKind.Domestic),
+                $"{item.PhoneNumber} kraj: {item.RemainingMb:0.##} MB | {(item.RemainingMb / 1024m):0.##} GB",
+                item.RemainingMb / 1024m);
 
-            iconState.Icon?.Dispose();
-            var gb = item.RemainingMb / 1024m;
-            var gbText = Math.Max(0, decimal.Round(gb, 0, MidpointRounding.AwayFromZero)).ToString("0");
-            iconState.Icon = TrayIconFactory.CreateNumberIcon(gbText);
-            iconState.NotifyIcon.Icon = iconState.Icon;
-            iconState.NotifyIcon.Text = TruncateTooltip($"{item.PhoneNumber}: {item.RemainingMb:0.##} MB | {gb:0.##} GB");
+            UpdateSingleUsageTrayIcon(
+                BuildUsageKey(item.PhoneNumber, UsageKind.Roaming),
+                $"{item.PhoneNumber} roaming: {item.RoamingMb:0.##} MB | {(item.RoamingMb / 1024m):0.##} GB",
+                item.RoamingMb / 1024m);
         }
     }
 
@@ -564,6 +562,93 @@ public sealed class TrayApplicationContext : ApplicationContext
         iconState.NotifyIcon.Dispose();
         iconState.Icon?.Dispose();
         _numberTrayIcons.Remove(key);
+    }
+
+    private bool IsPerNumberIconEnabled(string usageKey)
+    {
+        if (_perNumberTrayIconEnabled.TryGetValue(usageKey, out var enabled))
+        {
+            return enabled;
+        }
+
+        _perNumberTrayIconEnabled[usageKey] = true;
+        return true;
+    }
+
+    private void TogglePerNumberIcon(string usageKey, bool enabled)
+    {
+        _perNumberTrayIconEnabled[usageKey] = enabled;
+        SavePerNumberIconPreferences();
+
+        if (_currentUsage.Count > 0)
+        {
+            UpdateTrayUi(_currentUsage);
+        }
+        else if (!enabled)
+        {
+            RemovePerNumberIcon(usageKey);
+        }
+    }
+
+    private void SavePerNumberIconPreferences()
+    {
+        _config.PerNumberTrayIconEnabled = new Dictionary<string, bool>(_perNumberTrayIconEnabled, StringComparer.Ordinal);
+        _configService.Save(_config);
+    }
+
+    private void UpdateSingleUsageTrayIcon(string usageKey, string tooltip, decimal usageGb)
+    {
+        if (!IsPerNumberIconEnabled(usageKey))
+        {
+            RemovePerNumberIcon(usageKey);
+            return;
+        }
+
+        if (!_numberTrayIcons.TryGetValue(usageKey, out var iconState))
+        {
+            var notify = new NotifyIcon
+            {
+                Visible = true
+            };
+            iconState = new NumberTrayIconState(notify);
+            _numberTrayIcons[usageKey] = iconState;
+        }
+
+        iconState.Icon?.Dispose();
+        var gbText = Math.Max(0, decimal.Round(usageGb, 0, MidpointRounding.AwayFromZero)).ToString("0");
+        iconState.Icon = TrayIconFactory.CreateNumberIcon(gbText);
+        iconState.NotifyIcon.Icon = iconState.Icon;
+        iconState.NotifyIcon.Text = TruncateTooltip(tooltip);
+    }
+
+    private static string BuildUsageKey(string phoneNumber, UsageKind usageKind)
+    {
+        return $"{phoneNumber}|{usageKind}";
+    }
+
+    private decimal CalculateSelectedTotalMb(IReadOnlyCollection<MemberUsage> usage)
+    {
+        decimal total = 0m;
+        foreach (var item in usage)
+        {
+            if (IsPerNumberIconEnabled(BuildUsageKey(item.PhoneNumber, UsageKind.Domestic)))
+            {
+                total += item.RemainingMb;
+            }
+
+            if (IsPerNumberIconEnabled(BuildUsageKey(item.PhoneNumber, UsageKind.Roaming)))
+            {
+                total += item.RoamingMb;
+            }
+        }
+
+        return total;
+    }
+
+    private enum UsageKind
+    {
+        Domestic,
+        Roaming
     }
 
     private sealed class NumberTrayIconState(NotifyIcon notifyIcon)
