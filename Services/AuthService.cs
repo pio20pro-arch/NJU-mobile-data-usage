@@ -95,6 +95,16 @@ public sealed class AuthService
             _logger.Info("Access token refreshed.");
             return _tokens.AccessToken;
         }
+        catch (HttpRequestException ex)
+        {
+            _logger.Error($"Token refresh network error (will retry in next cycle): {ex.Message}");
+            throw;
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.Error($"Token refresh timeout (will retry in next cycle): {ex.Message}");
+            throw new HttpRequestException("Token refresh timed out.", ex);
+        }
         catch (ReauthRequiredException)
         {
             throw;
@@ -139,6 +149,16 @@ public sealed class AuthService
             PersistAuthData();
             _logger.Info("Access token force-refreshed.");
             return _tokens.AccessToken;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.Error($"Force refresh network error (will retry in next cycle): {ex.Message}");
+            throw;
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.Error($"Force refresh timeout (will retry in next cycle): {ex.Message}");
+            throw new HttpRequestException("Force refresh timed out.", ex);
         }
         catch (ReauthRequiredException)
         {

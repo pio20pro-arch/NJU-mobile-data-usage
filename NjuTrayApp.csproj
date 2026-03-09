@@ -1,5 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
@@ -14,6 +13,12 @@
     <Version>1.0.0</Version>
     <FileVersion>1.0.0.0</FileVersion>
     <InformationalVersion>1.0.0</InformationalVersion>
+    <ApplicationIcon>Assets\wifi.ico</ApplicationIcon>
   </PropertyGroup>
-
+  <ItemGroup>
+    <Content Include="Assets\wifi.ico">
+      <TargetPath>wifi.ico</TargetPath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
 </Project>

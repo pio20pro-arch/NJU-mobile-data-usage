@@ -28,6 +28,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     private AppConfig _config;
     private List<MemberUsage> _currentUsage = [];
     private List<GroupMember>? _cachedActiveMembers;
+    private readonly Icon _defaultStatusIcon;
     private Icon? _currentCustomIcon;
     private Task? _backgroundLoopTask;
     private readonly Dictionary<string, NumberTrayIconState> _numberTrayIcons = [];
@@ -47,6 +48,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         _apiClient = apiClient;
         _autostartService = autostartService;
         _logger = logger;
+        _defaultStatusIcon = LoadDefaultTrayIcon();
         _config = _configService.Load();
         _logger.SetHideSecretsInLogs(_config.HideSecretsInLogs);
         _perNumberTrayIconEnabled.Clear();
@@ -75,7 +77,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         _notifyIcon = new NotifyIcon
         {
             Text = "Nju Tray: niezalogowany",
-            Icon = SystemIcons.Information,
+            Icon = _defaultStatusIcon,
             ContextMenuStrip = _contextMenu,
             Visible = true
         };
@@ -95,6 +97,7 @@ public sealed class TrayApplicationContext : ApplicationContext
             _cts.Cancel();
             _notifyIcon.Visible = false;
             _notifyIcon.Dispose();
+            _defaultStatusIcon.Dispose();
             _refreshLock.Dispose();
             _cts.Dispose();
             _currentCustomIcon?.Dispose();
@@ -369,9 +372,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     {
         var totalMb = CalculateSelectedTotalMb(usage);
         var totalGb = totalMb / 1024m;
-        var iconText = totalGb >= 1000m
-            ? "999+"
-            : Math.Max(0, decimal.Round(totalGb, 0, MidpointRounding.AwayFromZero)).ToString("0");
+        var iconText = FormatIconTextFromGb(totalGb);
         var tooltip = $"Total {totalMb:0.##} MB | {totalGb:0.##} GB";
 
         _uiContext.Post(_ =>
@@ -441,6 +442,25 @@ public sealed class TrayApplicationContext : ApplicationContext
         }
 
         return text[..(maxLength - 1)];
+    }
+
+    private static Icon LoadDefaultTrayIcon()
+    {
+        try
+        {
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "wifi.ico");
+            if (File.Exists(iconPath))
+            {
+                using var fromFile = new Icon(iconPath);
+                return (Icon)fromFile.Clone();
+            }
+        }
+        catch
+        {
+            // fallback below
+        }
+
+        return (Icon)SystemIcons.Information.Clone();
     }
 
     private static string NormalizePhoneNumber(string value)
@@ -622,7 +642,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         }
 
         iconState.Icon?.Dispose();
-        var gbText = Math.Max(0, decimal.Round(usageGb, 0, MidpointRounding.AwayFromZero)).ToString("0");
+        var gbText = FormatIconTextFromGb(usageGb);
         iconState.Icon = TrayIconFactory.CreateNumberIcon(gbText);
         try
         {
@@ -638,6 +658,18 @@ public sealed class TrayApplicationContext : ApplicationContext
     private static string BuildUsageKey(string phoneNumber, UsageKind usageKind)
     {
         return $"{phoneNumber}|{usageKind}";
+    }
+
+    private static string FormatIconTextFromGb(decimal gb)
+    {
+        var roundedGb = Math.Max(0, decimal.Round(gb, 0, MidpointRounding.AwayFromZero));
+        if (roundedGb < 1000m)
+        {
+            return roundedGb.ToString("0");
+        }
+
+        var tb = Math.Max(1, (int)decimal.Round(roundedGb / 1024m, 0, MidpointRounding.AwayFromZero));
+        return $"{tb}TB";
     }
 
     private static string CreateUsageSignature(IEnumerable<MemberUsage> usage)
@@ -688,3 +720,4 @@ public sealed class TrayApplicationContext : ApplicationContext
         public Icon? Icon { get; set; }
     }
 }
+
