@@ -1,5 +1,7 @@
 using NjuTrayApp.Models;
 using NjuTrayApp.Services;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace NjuTrayApp.UI;
 
@@ -30,6 +32,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     private Task? _backgroundLoopTask;
     private readonly Dictionary<string, NumberTrayIconState> _numberTrayIcons = [];
     private readonly Dictionary<string, bool> _perNumberTrayIconEnabled = new(StringComparer.Ordinal);
+    private string? _lastUsageSignature;
 
     public TrayApplicationContext(
         ConfigService configService,
@@ -246,7 +249,7 @@ public sealed class TrayApplicationContext : ApplicationContext
             {
                 try
                 {
-                    var delaySeconds = Math.Max(15, _config.RefreshIntervalSeconds);
+                    var delaySeconds = _config.RefreshIntervalSeconds;
                     await Task.Delay(TimeSpan.FromSeconds(delaySeconds), _cts.Token);
                     await RefreshDataAsync(_cts.Token);
                 }
@@ -289,6 +292,14 @@ public sealed class TrayApplicationContext : ApplicationContext
             }
 
             _currentUsage = await LoadUsageWithRetryAsync(cancellationToken);
+            var currentSignature = CreateUsageSignature(_currentUsage);
+            if (string.Equals(_lastUsageSignature, currentSignature, StringComparison.Ordinal))
+            {
+                _logger.Info("Data unchanged. Skipping tray icon refresh.");
+                return;
+            }
+
+            _lastUsageSignature = currentSignature;
             UpdateTrayUi(_currentUsage);
             _logger.Info($"Data refresh completed. Members: {_currentUsage.Count}.");
         }
@@ -558,8 +569,7 @@ public sealed class TrayApplicationContext : ApplicationContext
             return;
         }
 
-        iconState.NotifyIcon.Visible = false;
-        iconState.NotifyIcon.Dispose();
+        iconState.TrayIcon.Dispose();
         iconState.Icon?.Dispose();
         _numberTrayIcons.Remove(key);
     }
@@ -606,24 +616,44 @@ public sealed class TrayApplicationContext : ApplicationContext
 
         if (!_numberTrayIcons.TryGetValue(usageKey, out var iconState))
         {
-            var notify = new NotifyIcon
-            {
-                Visible = true
-            };
-            iconState = new NumberTrayIconState(notify);
+            var guid = CreateDeterministicGuid(usageKey);
+            iconState = new NumberTrayIconState(guid, new NativeTrayIcon(guid));
             _numberTrayIcons[usageKey] = iconState;
         }
 
         iconState.Icon?.Dispose();
         var gbText = Math.Max(0, decimal.Round(usageGb, 0, MidpointRounding.AwayFromZero)).ToString("0");
         iconState.Icon = TrayIconFactory.CreateNumberIcon(gbText);
-        iconState.NotifyIcon.Icon = iconState.Icon;
-        iconState.NotifyIcon.Text = TruncateTooltip(tooltip);
+        try
+        {
+            iconState.TrayIcon.Show(iconState.Icon, TruncateTooltip(tooltip));
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Per-number tray icon update failed for {usageKey}: {ex.Message}");
+            RemovePerNumberIcon(usageKey);
+        }
     }
 
     private static string BuildUsageKey(string phoneNumber, UsageKind usageKind)
     {
         return $"{phoneNumber}|{usageKind}";
+    }
+
+    private static string CreateUsageSignature(IEnumerable<MemberUsage> usage)
+    {
+        return string.Join(
+            "|",
+            usage
+                .OrderBy(x => x.PhoneNumber, StringComparer.Ordinal)
+                .Select(x => $"{x.PhoneNumber}:{x.RemainingMb:0.######}:{x.RoamingMb:0.######}"));
+    }
+
+    private static Guid CreateDeterministicGuid(string usageKey)
+    {
+        var bytes = Encoding.UTF8.GetBytes($"NjuTrayApp:{usageKey}");
+        var hash = MD5.HashData(bytes);
+        return new Guid(hash);
     }
 
     private decimal CalculateSelectedTotalMb(IReadOnlyCollection<MemberUsage> usage)
@@ -651,9 +681,10 @@ public sealed class TrayApplicationContext : ApplicationContext
         Roaming
     }
 
-    private sealed class NumberTrayIconState(NotifyIcon notifyIcon)
+    private sealed class NumberTrayIconState(Guid guid, NativeTrayIcon trayIcon)
     {
-        public NotifyIcon NotifyIcon { get; } = notifyIcon;
+        public Guid Guid { get; } = guid;
+        public NativeTrayIcon TrayIcon { get; } = trayIcon;
         public Icon? Icon { get; set; }
     }
 }
